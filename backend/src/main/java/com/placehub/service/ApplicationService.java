@@ -29,13 +29,21 @@ public class ApplicationService {
     @Transactional
     public Application applyForJob(Student student, Long jobId) {
         JobDrive jobDrive = jobDriveRepository.findById(jobId)
-                .orElseThrow(() -> new ResourceNotFoundException("Job drive not found with ID: " + jobId));
+                .orElseThrow(() -> new ResourceNotFoundException("Job drive not found."));
+
+        if (jobDrive.getStatus() != com.placehub.enums.DriveStatus.ACTIVE) {
+            throw new EligibilityException("The recruitment drive is not active.");
+        }
+
+        if (jobDrive.getApplicationDeadline() != null && java.time.LocalDate.now().isAfter(jobDrive.getApplicationDeadline())) {
+            throw new EligibilityException("The application deadline has passed.");
+        }
 
         // Evaluate eligibility
         EligibilityResponse eligibility = eligibilityService.evaluate(student, jobDrive);
         if (!eligibility.isEligible()) {
             String reasons = String.join("; ", eligibility.getFailedReasons());
-            throw new EligibilityException("Not eligible to apply: " + reasons);
+            throw new EligibilityException("The student is not placement eligible: " + reasons);
         }
 
         // Check if already applied
@@ -65,7 +73,7 @@ public class ApplicationService {
     @Transactional(readOnly = true)
     public Application getApplicationById(Long id) {
         return applicationRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Application not found with ID: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found."));
     }
 
     @Transactional
@@ -73,5 +81,11 @@ public class ApplicationService {
         Application application = getApplicationById(id);
         application.setStatus(status);
         return applicationRepository.save(application);
+    }
+
+    @Transactional
+    public void deleteApplication(Long id) {
+        Application application = getApplicationById(id);
+        applicationRepository.delete(application);
     }
 }

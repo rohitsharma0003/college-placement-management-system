@@ -34,11 +34,7 @@ const StudentProfile = () => {
         skills: res.data.skills ? res.data.skills.join(', ') : ''
       });
     } catch (err) {
-      setToast({
-        show: true,
-        message: err.response?.data?.message || 'Error loading profile details.',
-        type: 'error'
-      });
+      toast.error(err.response?.data?.message || 'Error loading profile details.');
     } finally {
       setLoading(false);
     }

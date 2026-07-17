@@ -20,6 +20,13 @@ import com.placehub.repository.StudentRepository;
 import com.placehub.service.CompanyService;
 import com.placehub.service.JobDriveService;
 import com.placehub.service.ApplicationService;
+import com.placehub.entity.Admin;
+import com.placehub.repository.AdminRepository;
+import com.placehub.exception.ApplicationDeletionException;
+import com.placehub.exception.UnauthorizedException;
+import com.placehub.exception.ResourceNotFoundException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,6 +50,7 @@ public class AdminController {
     private final CompanyRepository companyRepository;
     private final JobDriveRepository jobDriveRepository;
     private final ApplicationRepository applicationRepository;
+    private final AdminRepository adminRepository;
 
     // --- Company CRUD ---
     @PostMapping("/companies")
@@ -116,6 +124,64 @@ public class AdminController {
             @Valid @RequestBody ApplicationStatusRequest request) {
         Application app = applicationService.updateApplicationStatus(id, request.getStatus());
         return ResponseEntity.ok(ApplicationResponse.fromEntity(app));
+    }
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AdminController.class);
+
+    @DeleteMapping("/applications/{id}")
+    public ResponseEntity<Void> deleteApplication(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        try {
+            // Security verification: verify admin identity
+            String adminEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+            Admin admin = adminRepository.findByEmail(adminEmail)
+                    .orElseThrow(() -> new UnauthorizedException("You are not authorized to perform this action."));
+
+            // Check if application exists
+            Application app = applicationService.getApplicationById(id);
+
+            // Verify if finalized
+            if (app.getStatus() == ApplicationStatus.SELECTED) {
+                throw new IllegalArgumentException("This application cannot be deleted because it has already been finalized.");
+            }
+
+            // Client IP resolution
+            String clientIp = request.getHeader("X-Forwarded-For");
+            if (clientIp == null || clientIp.isEmpty()) {
+                clientIp = request.getRemoteAddr();
+            }
+
+            // Gather context variables for Audit Logging
+            String studentName = app.getStudent() != null ? app.getStudent().getName() : "Unknown";
+            Long studentId = app.getStudent() != null ? app.getStudent().getId() : null;
+            String companyName = app.getJobDrive() != null && app.getJobDrive().getCompany() != null 
+                    ? app.getJobDrive().getCompany().getCompanyName() : "Unknown";
+            String jobRole = app.getJobDrive() != null ? app.getJobDrive().getRole() : "Unknown";
+            String timestamp = java.time.LocalDateTime.now().toString();
+
+            // Perform audit log write
+            logger.info("AUDIT LOG - Application Deleted: " +
+                    "[Admin Email: {}, Admin ID: {}, Student Name: {}, Student ID: {}, " +
+                    "Company Name: {}, Job Role: {}, Application ID: {}, Timestamp: {}, Client IP: {}]",
+                    adminEmail, admin.getId(), studentName, studentId,
+                    companyName, jobRole, id, timestamp, clientIp);
+
+            // Safe database transaction delete
+            applicationService.deleteApplication(id);
+
+            return ResponseEntity.noContent().build();
+
+        } catch (ResourceNotFoundException ex) {
+            throw ex;
+        } catch (UnauthorizedException ex) {
+            throw ex;
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            logger.error("Error executing application deletion for ID: {}", id, ex);
+            throw new ApplicationDeletionException("Unable to delete the application. Please try again later.");
+        }
     }
 
     // --- Students List ---
