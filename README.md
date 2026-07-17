@@ -26,10 +26,9 @@ PlaceHub is a web portal designed for colleges to manage student placement drive
 
 ![Student Dashboard](docs/images/student_dashboard.png)
 
-### Admin Dashboard
+### Admin Analytics
 
 ![Admin Dashboard](docs/images/admin_analytics.png)
-
 
 ## Installation
 
