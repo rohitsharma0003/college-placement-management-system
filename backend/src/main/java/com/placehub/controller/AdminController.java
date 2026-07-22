@@ -1,8 +1,15 @@
 package com.placehub.controller;
 
+import com.placehub.dto.request.AnnouncementRequest;
 import com.placehub.dto.request.ApplicationStatusRequest;
+import com.placehub.dto.request.ApplicationUpdateRequest;
 import com.placehub.dto.request.CompanyRequest;
 import com.placehub.dto.request.JobDriveRequest;
+import com.placehub.dto.request.ProfileUpdateRequest;
+import com.placehub.dto.request.RegisterRequest;
+import com.placehub.entity.Announcement;
+import com.placehub.service.AnnouncementService;
+import com.placehub.service.StudentService;
 import com.placehub.dto.response.ApplicationResponse;
 import com.placehub.dto.response.JobDriveResponse;
 import com.placehub.dto.response.StudentResponse;
@@ -20,13 +27,6 @@ import com.placehub.repository.StudentRepository;
 import com.placehub.service.CompanyService;
 import com.placehub.service.JobDriveService;
 import com.placehub.service.ApplicationService;
-import com.placehub.entity.Admin;
-import com.placehub.repository.AdminRepository;
-import com.placehub.exception.ApplicationDeletionException;
-import com.placehub.exception.UnauthorizedException;
-import com.placehub.exception.ResourceNotFoundException;
-import org.springframework.security.core.context.SecurityContextHolder;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -50,7 +50,8 @@ public class AdminController {
     private final CompanyRepository companyRepository;
     private final JobDriveRepository jobDriveRepository;
     private final ApplicationRepository applicationRepository;
-    private final AdminRepository adminRepository;
+    private final StudentService studentService;
+    private final AnnouncementService announcementService;
 
     // --- Company CRUD ---
     @PostMapping("/companies")
@@ -126,62 +127,12 @@ public class AdminController {
         return ResponseEntity.ok(ApplicationResponse.fromEntity(app));
     }
 
-    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AdminController.class);
-
-    @DeleteMapping("/applications/{id}")
-    public ResponseEntity<Void> deleteApplication(
+    @PutMapping("/applications/{id}")
+    public ResponseEntity<ApplicationResponse> updateApplicationDetails(
             @PathVariable Long id,
-            HttpServletRequest request) {
-        try {
-            // Security verification: verify admin identity
-            String adminEmail = SecurityContextHolder.getContext().getAuthentication().getName();
-            Admin admin = adminRepository.findByEmail(adminEmail)
-                    .orElseThrow(() -> new UnauthorizedException("You are not authorized to perform this action."));
-
-            // Check if application exists
-            Application app = applicationService.getApplicationById(id);
-
-            // Verify if finalized
-            if (app.getStatus() == ApplicationStatus.SELECTED) {
-                throw new IllegalArgumentException("This application cannot be deleted because it has already been finalized.");
-            }
-
-            // Client IP resolution
-            String clientIp = request.getHeader("X-Forwarded-For");
-            if (clientIp == null || clientIp.isEmpty()) {
-                clientIp = request.getRemoteAddr();
-            }
-
-            // Gather context variables for Audit Logging
-            String studentName = app.getStudent() != null ? app.getStudent().getName() : "Unknown";
-            Long studentId = app.getStudent() != null ? app.getStudent().getId() : null;
-            String companyName = app.getJobDrive() != null && app.getJobDrive().getCompany() != null 
-                    ? app.getJobDrive().getCompany().getCompanyName() : "Unknown";
-            String jobRole = app.getJobDrive() != null ? app.getJobDrive().getRole() : "Unknown";
-            String timestamp = java.time.LocalDateTime.now().toString();
-
-            // Perform audit log write
-            logger.info("AUDIT LOG - Application Deleted: " +
-                    "[Admin Email: {}, Admin ID: {}, Student Name: {}, Student ID: {}, " +
-                    "Company Name: {}, Job Role: {}, Application ID: {}, Timestamp: {}, Client IP: {}]",
-                    adminEmail, admin.getId(), studentName, studentId,
-                    companyName, jobRole, id, timestamp, clientIp);
-
-            // Safe database transaction delete
-            applicationService.deleteApplication(id);
-
-            return ResponseEntity.noContent().build();
-
-        } catch (ResourceNotFoundException ex) {
-            throw ex;
-        } catch (UnauthorizedException ex) {
-            throw ex;
-        } catch (IllegalArgumentException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            logger.error("Error executing application deletion for ID: {}", id, ex);
-            throw new ApplicationDeletionException("Unable to delete the application. Please try again later.");
-        }
+            @RequestBody ApplicationUpdateRequest request) {
+        Application app = applicationService.updateApplicationDetails(id, request.getStatus(), request.getRating(), request.getAdminNotes());
+        return ResponseEntity.ok(ApplicationResponse.fromEntity(app));
     }
 
     // --- Students List ---
@@ -192,6 +143,56 @@ public class AdminController {
                 .map(StudentResponse::fromEntity)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/students")
+    public ResponseEntity<StudentResponse> createStudent(@Valid @RequestBody RegisterRequest request) {
+        Student student = studentService.createStudent(request);
+        return new ResponseEntity<>(StudentResponse.fromEntity(student), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/students/{id}")
+    public ResponseEntity<StudentResponse> updateStudent(@PathVariable Long id, @Valid @RequestBody ProfileUpdateRequest request) {
+        Student student = studentService.updateStudentAdmin(id, request);
+        return ResponseEntity.ok(StudentResponse.fromEntity(student));
+    }
+
+    @DeleteMapping("/students/{id}")
+    public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
+        studentService.deleteStudent(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/students/{id}/blacklist")
+    public ResponseEntity<StudentResponse> toggleStudentBlacklist(@PathVariable Long id) {
+        Student student = studentService.toggleBlacklist(id);
+        return ResponseEntity.ok(StudentResponse.fromEntity(student));
+    }
+
+    // --- Announcements CRUD ---
+    @GetMapping("/announcements")
+    public ResponseEntity<List<Announcement>> getAllAnnouncements() {
+        return ResponseEntity.ok(announcementService.getAllAnnouncements());
+    }
+
+    @PostMapping("/announcements")
+    public ResponseEntity<Announcement> createAnnouncement(@Valid @RequestBody AnnouncementRequest request) {
+        Announcement announcement = announcementService.createAnnouncement(request);
+        return new ResponseEntity<>(announcement, HttpStatus.CREATED);
+    }
+
+    @PutMapping("/announcements/{id}")
+    public ResponseEntity<Announcement> updateAnnouncement(
+            @PathVariable Long id,
+            @Valid @RequestBody AnnouncementRequest request) {
+        Announcement announcement = announcementService.updateAnnouncement(id, request);
+        return ResponseEntity.ok(announcement);
+    }
+
+    @DeleteMapping("/announcements/{id}")
+    public ResponseEntity<Void> deleteAnnouncement(@PathVariable Long id) {
+        announcementService.deleteAnnouncement(id);
+        return ResponseEntity.noContent().build();
     }
 
     // --- Dashboard Stats ---

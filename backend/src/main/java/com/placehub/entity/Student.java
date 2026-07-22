@@ -55,4 +55,26 @@ public class Student {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserRole role = UserRole.STUDENT;
+
+    @Column(name = "is_blacklisted")
+    private Boolean isBlacklisted = false;
+
+    @Column(name = "resume_url")
+    private String resumeUrl;
+
+    @Lob
+    @Column(name = "experiences_json", columnDefinition = "LONGTEXT")
+    private String experiencesJson;
+
+    @Lob
+    @Column(name = "projects_json", columnDefinition = "LONGTEXT")
+    private String projectsJson;
+
+    @Lob
+    @Column(name = "skill_categories_json", columnDefinition = "LONGTEXT")
+    private String skillCategoriesJson;
+
+    @Lob
+    @Column(name = "accomplishments_json", columnDefinition = "LONGTEXT")
+    private String accomplishmentsJson;
 }

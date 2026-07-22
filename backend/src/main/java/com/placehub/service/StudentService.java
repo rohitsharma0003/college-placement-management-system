@@ -1,11 +1,15 @@
 package com.placehub.service;
 
 import com.placehub.dto.request.ProfileUpdateRequest;
+import com.placehub.dto.request.RegisterRequest;
 import com.placehub.entity.Student;
+import com.placehub.enums.UserRole;
 import com.placehub.exception.ResourceNotFoundException;
+import com.placehub.repository.ApplicationRepository;
 import com.placehub.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StudentService {
     private final StudentRepository studentRepository;
+    private final ApplicationRepository applicationRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
     public Student getCurrentStudent() {
@@ -43,7 +49,107 @@ public class StudentService {
         student.setBacklogs(request.getBacklogs());
         student.setGraduationYear(request.getGraduationYear());
         student.setSkills(request.getSkills());
+        if (request.getExperiencesJson() != null) student.setExperiencesJson(request.getExperiencesJson());
+        if (request.getProjectsJson() != null) student.setProjectsJson(request.getProjectsJson());
+        if (request.getSkillCategoriesJson() != null) student.setSkillCategoriesJson(request.getSkillCategoriesJson());
+        if (request.getAccomplishmentsJson() != null) student.setAccomplishmentsJson(request.getAccomplishmentsJson());
 
+        return studentRepository.save(student);
+    }
+
+    @Transactional
+    public Student uploadResume(org.springframework.web.multipart.MultipartFile file) {
+        Student student = getCurrentStudent();
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Resume file cannot be empty");
+        }
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename != null && !originalFilename.toLowerCase().endsWith(".pdf")) {
+            throw new IllegalArgumentException("Only PDF resume files are allowed");
+        }
+
+        try {
+            java.nio.file.Path uploadDir = java.nio.file.Paths.get("uploads", "resumes");
+            if (!java.nio.file.Files.exists(uploadDir)) {
+                java.nio.file.Files.createDirectories(uploadDir);
+            }
+            String filename = "student_" + student.getId() + "_resume.pdf";
+            java.nio.file.Path targetPath = uploadDir.resolve(filename);
+            java.nio.file.Files.copy(file.getInputStream(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            student.setResumeUrl("/api/files/resumes/" + filename);
+            return studentRepository.save(student);
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Failed to store resume file: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public Student createStudent(RegisterRequest request) {
+        if (studentRepository.existsByEmail(request.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+        if (studentRepository.existsByRollNumber(request.getRollNumber())) {
+            throw new IllegalArgumentException("Roll number already exists");
+        }
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match");
+        }
+        if (request.getPassword().length() < 6) {
+            throw new IllegalArgumentException("Password must be at least 6 characters");
+        }
+
+        Student student = new Student();
+        student.setName(request.getName());
+        student.setEmail(request.getEmail());
+        student.setPassword(passwordEncoder.encode(request.getPassword()));
+        student.setRollNumber(request.getRollNumber());
+        student.setBranch(request.getBranch());
+        student.setCgpa(request.getCgpa());
+        student.setBacklogs(request.getBacklogs());
+        student.setGraduationYear(request.getGraduationYear());
+        student.setSkills(request.getSkills() != null ? request.getSkills() : new java.util.ArrayList<>());
+        student.setRole(UserRole.STUDENT);
+        return studentRepository.save(student);
+    }
+
+    @Transactional
+    public Student updateStudentAdmin(Long id, ProfileUpdateRequest request) {
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+
+        if (request.getEmail() != null && !request.getEmail().equals(student.getEmail())
+                && studentRepository.existsByEmail(request.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+
+        student.setName(request.getName());
+        student.setEmail(request.getEmail());
+        student.setBranch(request.getBranch());
+        student.setCgpa(request.getCgpa());
+        student.setBacklogs(request.getBacklogs());
+        student.setGraduationYear(request.getGraduationYear());
+        student.setSkills(request.getSkills() != null ? request.getSkills() : new java.util.ArrayList<>());
+
+        return studentRepository.save(student);
+    }
+
+    @Transactional
+    public void deleteStudent(Long id) {
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        
+        var applications = applicationRepository.findByStudent(student);
+        applicationRepository.deleteAll(applications);
+        
+        studentRepository.delete(student);
+    }
+
+    @Transactional
+    public Student toggleBlacklist(Long id) {
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        student.setIsBlacklisted(student.getIsBlacklisted() == null || !student.getIsBlacklisted());
         return studentRepository.save(student);
     }
 }

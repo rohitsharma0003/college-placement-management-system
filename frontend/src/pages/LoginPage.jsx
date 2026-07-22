@@ -18,7 +18,7 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const user = await login(email, password);
+      const user = await login(email, password, roleTab);
       toast.success(`Welcome back, ${user.name}!`);
       if (user.role === 'ADMIN') {
         navigate('/admin/dashboard');
@@ -26,12 +26,22 @@ const LoginPage = () => {
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err);
-      toast.error(err || 'Failed to authenticate');
+      let displayError = err;
+      if (typeof err === 'string') {
+        if (err.includes('Administrator')) {
+          displayError = 'This account is registered as an Administrator. Please log in using the Admin Login page.';
+        } else if (err.includes('Student')) {
+          displayError = 'This account is registered as a Student. Please log in using the Student Login page.';
+        }
+      }
+      setError(displayError);
+      toast.error(displayError || 'Failed to authenticate');
     } finally {
       setLoading(false);
     }
   };
+
+  const [roleTab, setRoleTab] = useState('STUDENT'); // 'STUDENT' or 'ADMIN'
 
   return (
     <div className="auth-container">
@@ -57,6 +67,26 @@ const LoginPage = () => {
         <div className="auth-box">
           <h1>Sign In</h1>
           <p className="auth-subtitle">Access your campus placement workspace.</p>
+
+          {/* Role Selection Tabs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20, background: 'var(--bg-card)', padding: 4, borderRadius: 8, border: '1px solid var(--border)' }}>
+            <button
+              type="button"
+              className={`btn ${roleTab === 'STUDENT' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '8px 0', fontSize: '0.85rem' }}
+              onClick={() => { setRoleTab('STUDENT'); setEmail(''); setPassword(''); }}
+            >
+              🎓 Student Portal
+            </button>
+            <button
+              type="button"
+              className={`btn ${roleTab === 'ADMIN' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '8px 0', fontSize: '0.85rem' }}
+              onClick={() => { setRoleTab('ADMIN'); setEmail(''); setPassword(''); }}
+            >
+              🛡️ Admin Hub
+            </button>
+          </div>
 
           {error && <div className="reasons-banner" style={{ marginBottom: 20 }}><span className="reasons-title">Error</span>{error}</div>}
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 
 // Layouts
 import DashboardLayout from './layouts/DashboardLayout';
@@ -19,6 +19,7 @@ import AdminCompanies from './pages/AdminCompanies';
 import AdminJobDrives from './pages/AdminJobDrives';
 import AdminApplications from './pages/AdminApplications';
 import AdminStudents from './pages/AdminStudents';
+import AdminAnnouncements from './pages/AdminAnnouncements';
 import AdminAnalytics from './pages/AdminAnalytics';
 import ErrorPage from './pages/ErrorPage';
 
@@ -31,7 +32,16 @@ const ProtectedRoute = ({ children, allowedRole }) => {
   }
 
   if (allowedRole && user.role !== allowedRole) {
-    // Redirect role-violating users to their respective home dashboards
+    if (user.role === 'STUDENT' && allowedRole === 'ADMIN') {
+      setTimeout(() => {
+        toast.error("Access Denied. You are not authorized to access the Admin Portal.");
+      }, 50);
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (user.role === 'ADMIN' && allowedRole === 'STUDENT') {
+      return <Navigate to="/admin/dashboard" replace />;
+    }
+    // General fallback redirect
     return <Navigate to={user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard'} replace />;
   }
 
@@ -122,12 +132,24 @@ function App() {
             <Route path="drives" element={<AdminJobDrives />} />
             <Route path="applications" element={<AdminApplications />} />
             <Route path="students" element={<AdminStudents />} />
+            <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="analytics" element={<AdminAnalytics />} />
           </Route>
 
           {/* Fallback Catch-All Route */}
           <Route path="*" element={<ErrorPage />} />
         </Routes>
+        <Toaster 
+          position="top-right" 
+          toastOptions={{
+            className: 'toast-custom',
+            style: {
+              background: 'var(--bg-card)',
+              color: 'var(--text-main)',
+              border: '1px solid var(--border)'
+            }
+          }} 
+        />
       </BrowserRouter>
     </AuthProvider>
   );

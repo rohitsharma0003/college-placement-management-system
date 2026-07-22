@@ -18,12 +18,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Sun,
-  Moon
+  Moon,
+  Megaphone,
+  ChevronDown,
+  Clock
 } from 'lucide-react';
 import "./DashboardLayout.css";
 
 const DashboardLayout = () => {
-  const { user, logout, isAdmin, isStudent } = useAuth();
+  const { user, logout, isAdmin, isStudent, stayLoggedIn, sessionExpiringModalOpen, remainingSeconds } = useAuth();
   const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -63,11 +66,18 @@ const DashboardLayout = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Close notifications dropdown on click outside
+  // Profile Dropdown state
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
+
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotifOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -123,27 +133,92 @@ const DashboardLayout = () => {
     );
   };
 
+  const handleLogoClick = () => {
+    if (isAdmin) {
+      navigate('/admin/dashboard');
+    } else if (isStudent) {
+      navigate('/dashboard');
+    } else {
+      navigate('/login');
+    }
+  };
+
   return (
     <div className="app-container">
-      {/* Mobile Top Header */}
+      {/* Mobile Top Header Bar (Fixed at top on screens < 992px) */}
       <header className="mobile-header-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} title="Go to Dashboard">
           <div className="sidebar-logo" style={{ width: 28, height: 28, fontSize: '0.9rem', borderRadius: 5 }}>P</div>
-          <span style={{ fontSize: '1rem', fontWeight: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}> </span>
+          <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>PLACEHUB</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Theme switcher */}
+          <button onClick={toggleTheme} className="theme-toggle-btn" style={{ padding: 6 }}>
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
+
+          {/* Search Trigger */}
+          <button onClick={() => setSearchOpen(true)} className="theme-toggle-btn" style={{ padding: 6 }} title="Search Workspace">
+            <Search size={18} />
+          </button>
+
+          {/* Notifications */}
+          <div className="notif-wrapper">
+            <button onClick={() => setNotifOpen(!notifOpen)} className="notif-btn" style={{ padding: 6 }}>
+              <Bell size={18} />
+              {unreadCount > 0 && <span className="notif-badge" />}
+            </button>
+
+            <AnimatePresence>
+              {notifOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="notification-dropdown"
+                  style={{ right: -40, width: 280 }}
+                >
+                  <div className="notif-header">
+                    <span className="notif-title">Notifications</span>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} className="notif-mark-btn">Mark all read</button>
+                    )}
+                  </div>
+                  <div className="notif-list">
+                    {notifications.map(notif => (
+                      <div key={notif.id} className={`notif-item ${notif.read ? "" : "unread"}`}>
+                        <span className="notif-text">{notif.text}</span>
+                        <span className="notif-time">{notif.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Hamburger Menu Toggle */}
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'flex' }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'flex', padding: 6 }}
+            aria-label="Toggle Menu"
           >
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
       </header>
 
-      {/* Main Sidebar (Desktop / Collapsible) */}
+      {/* Sidebar Backdrop Overlay (Mobile & Tablet) */}
+      <div 
+        className={`sidebar-backdrop ${mobileMenuOpen ? "show" : ""}`} 
+        onClick={() => setMobileMenuOpen(false)} 
+      />
+
+      {/* Main Sidebar (Desktop / Collapsible Mobile Drawer) */}
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""} ${mobileMenuOpen ? "show" : ""}`}>
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" onClick={() => { handleLogoClick(); setMobileMenuOpen(false); }} style={{ cursor: 'pointer' }} title="Go to Dashboard">
           <div className="sidebar-logo">P</div>
           <span className="brand-text">PLACEHUB</span>
         </div>
@@ -192,6 +267,10 @@ const DashboardLayout = () => {
                 <Users size={18} />
                 <span className="menu-text">Students</span>
               </NavLink>
+              <NavLink to="/admin/announcements" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`} title="Announcements">
+                <Megaphone size={18} />
+                <span className="menu-text">Announcements</span>
+              </NavLink>
               <NavLink to="/admin/analytics" onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`} title="Analytics">
                 <BarChart3 size={18} />
                 <span className="menu-text">Analytics</span>
@@ -210,7 +289,7 @@ const DashboardLayout = () => {
               <span className="user-role">{user?.role}</span>
             </div>
           </div>
-          <button className="btn-logout" onClick={handleLogout}>
+          <button className="btn-logout" onClick={() => { setMobileMenuOpen(false); handleLogout(); }}>
             <LogOut size={16} />
             <span className="menu-text">Logout</span>
           </button>
@@ -313,14 +392,79 @@ const DashboardLayout = () => {
               </AnimatePresence>
             </div>
 
-            {/* Academic User Tag */}
-            <div className="user-header">
-              <div className="user-header-avatar">
-                {getInitials(user?.name)}
+            {/* Interactive User Profile Header Dropdown */}
+            <div className="profile-wrapper" ref={profileRef}>
+              <div 
+                className="user-header" 
+                onClick={() => setProfileOpen(!profileOpen)}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+                title="User Profile & Settings"
+              >
+                <div className="user-header-avatar">
+                  {getInitials(user?.name)}
+                </div>
+                <span className="header-username">
+                  {user?.name}
+                </span>
+                <ChevronDown size={14} style={{ color: 'var(--text-muted)', marginLeft: 2 }} />
               </div>
-              <span className="header-username">
-                {user?.name}
-              </span>
+
+              <AnimatePresence>
+                {profileOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="profile-dropdown"
+                  >
+                    <div className="profile-dropdown-header">
+                      <div className="user-header-avatar" style={{ width: 34, height: 34, fontSize: '0.85rem' }}>
+                        {getInitials(user?.name)}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {user?.name}
+                        </span>
+                        <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {user?.email}
+                        </span>
+                        <span className="badge badge-primary" style={{ fontSize: '0.6rem', padding: '2px 6px', alignSelf: 'flex-start', marginTop: 3 }}>
+                          {user?.role}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="profile-dropdown-menu">
+                      <button 
+                        className="profile-dropdown-item"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          if (isStudent) {
+                            navigate('/profile');
+                          } else {
+                            navigate('/admin/students');
+                          }
+                        }}
+                      >
+                        <User size={16} />
+                        <span>Profile</span>
+                      </button>
+
+                      <button 
+                        className="profile-dropdown-item text-danger"
+                        onClick={() => {
+                          setProfileOpen(false);
+                          handleLogout();
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>
@@ -412,31 +556,47 @@ const DashboardLayout = () => {
         )}
       </AnimatePresence>
 
-      {/* Styled styles for mobile views */}
-      <style>{`
-        @media (max-width: 992px) {
-          .mobile-header-bar {
-            display: flex !important;
-          }
-          .sticky-header {
-            display: none !important;
-          }
-          .sidebar {
-            transform: translateX(-100%);
-            width: 280px !important;
-          }
-          .sidebar.show {
-            transform: translateX(0);
-          }
-          .main-wrapper-container {
-            margin-left: 0 !important;
-            padding-top: 60px !important;
-          }
-          .workspace {
-            padding: 20px 16px !important;
-          }
-        }
-      `}</style>
+      {/* Session Expiring Warning Modal (14-minute inactivity prompt) */}
+      <AnimatePresence>
+        {sessionExpiringModalOpen && (
+          <div className="modal-backdrop" style={{ zIndex: 4000, backgroundColor: 'rgba(15, 23, 42, 0.7)' }}>
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 440, borderRadius: 12, padding: 24, textAlign: 'center', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}
+            >
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--warning-light)', color: 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Clock size={24} />
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 8px' }}>Session Expiring</h3>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 20px' }}>
+                Your session will expire in <strong style={{ color: 'var(--danger)', fontSize: '1rem' }}>{remainingSeconds} seconds</strong> due to inactivity.
+              </p>
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => handleLogout()}
+                  style={{ flex: 1 }}
+                >
+                  Log Out Now
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={stayLoggedIn}
+                  style={{ flex: 1 }}
+                >
+                  Stay Logged In
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
